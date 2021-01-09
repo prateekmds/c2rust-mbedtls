@@ -16,23 +16,6 @@ fn main() {
     unimplemented!();
 }
 
-//do while loop implemented as single inst bcoz while condition is 0
-fn GET_UINT32_BE(b: &[u8; 4]) -> u32 {
-    return (u32::from(b[0]) << 24)
-        | (u32::from(b[1]) << 16)
-        | (u32::from(b[2]) << 8)
-        | (u32::from(b[3]));
-}
-
-//do while loop implemented as single inst bcoz while condition is 0
-fn PUT_UINT32_BE(n: u32, b: &mut [u8]) {
-    use std::convert::TryFrom;
-    b[0] = (n >> 24) as u8;
-    b[1] = (n >> 16) as u8;
-    b[2] = (n >> 8) as u8;
-    b[3] = (n) as u8;
-}
-
 fn mbedtls_sha256_init(ctx: &mut MdContextSHA256) {
     // SHA256_VALIDATE( ctx != NULL ); is not chnaged bcoz it is do { } while( 0 )
 
@@ -40,40 +23,34 @@ fn mbedtls_sha256_init(ctx: &mut MdContextSHA256) {
     ctx.state = vec![0u32; 8];
     ctx.buffer = vec![0u8; 64];
 
-    // int is224; implemented yet to check
     ctx.is224 = 0u32 as i32;
-}
-
-fn zeroize_u8(a: &mut Vec<u8>) {
-    for i in &mut a.iter_mut() {
-        *i = 0u8;
-    }
-}
-
-fn zeroize_u32(a: &mut Vec<u32>) {
-    for i in &mut a.iter_mut() {
-        *i = 0u32;
-    }
 }
 
 fn mbedtls_sha256_free(ctx: &mut MdContextSHA256) {
-    zeroize_u32(&mut ctx.total);
+    for i in &mut ctx.total.iter_mut() {
+        *i = 0u32;
+    }
     ctx.total.resize(0, 0);
-    zeroize_u32(&mut ctx.state);
+
+    for i in &mut ctx.state.iter_mut() {
+        *i = 0u32;
+    }
     ctx.state.resize(0, 0);
-    zeroize_u8(&mut ctx.buffer);
+
+    for i in &mut ctx.buffer.iter_mut() {
+        *i = 0u8;
+    }
     ctx.buffer.resize(0, 0);
 
-    // to be checked once
     ctx.is224 = 0u32 as i32;
 }
 
-fn mbedtls_sha256_clone(dst: &mut MdContextSHA256, src: &MdContextSHA256) {
-    dst.buffer[..].clone_from_slice(&src.buffer[..]);
-    dst.state[..].clone_from_slice(&src.state[..]);
-    dst.total[..].clone_from_slice(&src.total[..]);
-    dst.is224 = src.is224;
-}
+// fn mbedtls_sha256_clone(dst: &mut MdContextSHA256, src: &MdContextSHA256) {
+//     dst.buffer[..].clone_from_slice(&src.buffer[..]);
+//     dst.state[..].clone_from_slice(&src.state[..]);
+//     dst.total[..].clone_from_slice(&src.total[..]);
+//     dst.is224 = src.is224;
+// }
 
 fn mbedtls_sha256_starts_ret(ctx: &mut MdContextSHA256, is224: i32) -> i32 {
     ctx.total[0] = 0;
@@ -108,9 +85,25 @@ fn mbedtls_sha256_starts_ret(ctx: &mut MdContextSHA256, is224: i32) -> i32 {
     return 0;
 }
 
-// ye to check the conversion of calling function
 fn mbedtls_sha256_starts(ctx: &mut MdContextSHA256, is224: i32) {
     mbedtls_sha256_starts_ret(ctx, is224);
+}
+
+//do while loop implemented as single inst bcoz while condition is 0
+fn GET_UINT32_BE(b: &[u8; 4]) -> u32 {
+    return (u32::from(b[0]) << 24)
+        | (u32::from(b[1]) << 16)
+        | (u32::from(b[2]) << 8)
+        | (u32::from(b[3]));
+}
+
+//do while loop implemented as single inst bcoz while condition is 0
+fn PUT_UINT32_BE(n: u32, b: &mut [u8]) {
+    use std::convert::TryFrom;
+    b[0] = (n >> 24) as u8;
+    b[1] = (n >> 16) as u8;
+    b[2] = (n >> 8) as u8;
+    b[3] = (n) as u8;
 }
 
 fn mbedtls_internal_sha256_process(ctx: &mut MdContextSHA256, data: &[u8]) -> i32 {
@@ -146,13 +139,13 @@ fn mbedtls_internal_sha256_process(ctx: &mut MdContextSHA256, data: &[u8]) -> i3
         *d = (*d).wrapping_add(*h);
         *d = (*d).wrapping_add(S3(e));
         *d = (*d).wrapping_add(F1(e, f, g));
-        *d = (*d).wrapping_add(T); // yet to check how to call K
+        *d = (*d).wrapping_add(T);
         *d = (*d).wrapping_add(x);
+
         // (h) = (h) + S3(e) + F1((e),(f),(g)) + (K) + (x) + S2(a) + F0((a),(b),(c));
         *h = (*h).wrapping_add(S3(e));
-        // *h = (*h).wrapping_add(S3(e));
         *h = (*h).wrapping_add(F1(e, f, g));
-        *h = (*h).wrapping_add(T); // yet to check how to call K
+        *h = (*h).wrapping_add(T);
         *h = (*h).wrapping_add(x);
         *h = (*h).wrapping_add(S2(a));
         *h = (*h).wrapping_add(F0(a, b, c));
@@ -362,19 +355,12 @@ fn mbedtls_internal_sha256_process(ctx: &mut MdContextSHA256, data: &[u8]) -> i3
     //     P( A[1], A[2], A[3],&mut ctx.state[4], A[5], A[6], A[7],&mut A[0], R(i+7), K[i+7] );
     // }
 
-    // let mut R = |t: u32| -> u32 {
-    //     W[t as usize] = S1(W[(t as usize) - 2])
-    //         .wrapping_add(W[(t as usize) - 7])
-    //         .wrapping_add(S0(W[(t as usize) - 15]))
-    //         .wrapping_add(W[(t as usize) - 16]);
-    //     return W[t as usize];
-    // };
-    let mut R = |t: usize| -> u32 {
-        W[t] = S1(W[(t) - 2])
-            .wrapping_add(W[(t) - 7])
-            .wrapping_add(S0(W[(t) - 15]))
-            .wrapping_add(W[(t) - 16]);
-        return W[t];
+    let mut R = |t: u32| -> u32 {
+        W[t as usize] = S1(W[(t as usize) - 2])
+            .wrapping_add(W[(t as usize) - 7])
+            .wrapping_add(S0(W[(t as usize) - 15]))
+            .wrapping_add(W[(t as usize) - 16]);
+        return W[t as usize];
     };
 
     for i in (16..64).step_by(8) {
@@ -741,9 +727,13 @@ pub mod test {
                 k = 0;
             }
 
-            println!("SHA-256 test #{}", i + 1);
-            println!("SHA256Sum before: {:?}", sha256sum);
-            println!("TestSum before: {:?}", sha256_test_sum[i as usize]);
+            println!(
+                "Running SHA-256 test Number {0} with value of k as {1}",
+                i + 1,
+                k
+            );
+            println!("SHA-256 Sum before: {:?}", sha256sum);
+            println!("Test Sum before: {:?}", sha256_test_sum[i as usize]);
 
             assert_eq!(0, mbedtls_sha256_starts_ret(&mut ctx, k));
 
@@ -770,7 +760,7 @@ pub mod test {
 
             assert_eq!(0, mbedtls_sha256_finish_ret(&mut ctx, &mut sha256sum));
 
-            println!("\n at line 718\n");
+            println!("\n before compare\n");
 
             use std::cmp;
             fn compare(a: &[u8], b: &[u8]) -> cmp::Ordering {
@@ -780,22 +770,15 @@ pub mod test {
                     .find(|&ord| ord != cmp::Ordering::Equal)
                     .unwrap_or(a.len().cmp(&b.len()))
             }
-            // sha256sum = [
-            //     0x23, 0x09, 0x7D, 0x22, 0x34, 0x05, 0xD8, 0x22, 0x86, 0x42, 0xA4, 0x77, 0xBD, 0xA2,
-            //     0x55, 0xB3, 0x2A, 0xAD, 0xBC, 0xE4, 0xBD, 0xA0, 0xB3, 0xF7, 0xE3, 0x6C, 0x9D, 0xA7,
-            //     0x00, 0x00, 0x00, 0x00,
-            // ]
-            // .to_vec();
-
-            println!("SHA256Sum After: {:?}", sha256sum);
-            println!("TestSum After: {:?}", sha256_test_sum[i as usize]);
+            println!("SHA256 Sum after Hashing : {:?}", sha256sum);
+            println!("Test Sum after Hashing: {:?}", sha256_test_sum[i as usize]);
 
             assert_eq!(
                 cmp::Ordering::Equal,
                 compare(sha256sum.as_ref(), &sha256_test_sum[i as usize])
             );
 
-            println!("Passed. \n");
+            println!("********* Test Case {} is Passed*********** \n", i + 1);
         }
         println!(" ");
 
