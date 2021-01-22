@@ -12,67 +12,26 @@ fn main() {
     unimplemented!();
 }
 
-fn GET_UINT64_BE(b: &[u8; 8]) -> u64 {
-    return (u64::from(b[0]) << 56)
-        | (u64::from(b[1]) << 48)
-        | (u64::from(b[2]) << 40)
-        | (u64::from(b[3]) << 32)
-        | (u64::from(b[4]) << 24)
-        | (u64::from(b[5]) << 16)
-        | (u64::from(b[6]) << 8)
-        | (u64::from(b[7]));
-}
-
-fn PUT_UINT64_BE(n: u64, b: &mut [u8]) {
-    use std::convert::TryFrom;
-    b[0] = (n >> 56) as u8;
-    b[1] = (n >> 48) as u8;
-    b[2] = (n >> 40) as u8;
-    b[3] = (n >> 32) as u8;
-    b[4] = (n >> 24) as u8;
-    b[5] = (n >> 16) as u8;
-    b[6] = (n >> 8) as u8;
-    b[7] = (n) as u8;
-}
-
-// Not converted
-// #if defined(MBEDTLS_SHA512_SMALLER)
-// static void sha512_put_uint64_be( uint64_t n, unsigned char *b, uint8_t i )
-// {
-//     PUT_UINT64_BE(n, b, i);
-// }
-// #else
-// #define sha512_put_uint64_be    PUT_UINT64_BE
-// #endif /* MBEDTLS_SHA512_SMALLER */
 fn mbedtls_sha512_init(ctx: &mut MdContextSHA512) {
-    // SHA256_VALIDATE( ctx != NULL ); is not chnaged bcoz it is do { } while( 0 )
-
     ctx.total = vec![0u64; 2];
     ctx.state = vec![0u64; 8];
-    ctx.buffer = vec![0u8; 64];
+    ctx.buffer = vec![0u8; 128];
 
-    // int is224; implemented yet to check
     ctx.is384 = 0u64 as i64;
 }
 
-fn zeroize_u8(a: &mut Vec<u8>) {
-    for i in &mut a.iter_mut() {
-        *i = 0u8;
-    }
-}
-
-fn zeroize_u64(a: &mut Vec<u64>) {
-    for i in &mut a.iter_mut() {
+fn mbedtls_sha512_free(ctx: &mut MdContextSHA512) {
+    for i in &mut ctx.total.iter_mut() {
         *i = 0u64;
     }
-}
-
-fn mbedtls_sha512_free(ctx: &mut MdContextSHA512) {
-    zeroize_u64(&mut ctx.total);
     ctx.total.resize(0, 0);
-    zeroize_u64(&mut ctx.state);
+    for i in &mut ctx.state.iter_mut() {
+        *i = 0u64;
+    }
     ctx.state.resize(0, 0);
-    zeroize_u8(&mut ctx.buffer);
+    for i in &mut ctx.buffer.iter_mut() {
+        *i = 0u8;
+    }
     ctx.buffer.resize(0, 0);
 
     // to be checked once
@@ -126,13 +85,32 @@ fn mbedtls_sha512_starts_ret(ctx: &mut MdContextSHA512, is384: i64) -> i64 {
     return 0;
 }
 
-// fn mbedtls_sha256_starts(ctx: &mut MdContextSHA256, is224: i32) {
-//     mbedtls_sha256_starts_ret(ctx, is224);
-// }
+fn GET_UINT64_BE(b: &[u8; 8]) -> u64 {
+    return (u64::from(b[0]) << 56)
+        | (u64::from(b[1]) << 48)
+        | (u64::from(b[2]) << 40)
+        | (u64::from(b[3]) << 32)
+        | (u64::from(b[4]) << 24)
+        | (u64::from(b[5]) << 16)
+        | (u64::from(b[6]) << 8)
+        | (u64::from(b[7]));
+}
+
+fn PUT_UINT64_BE(n: u64, b: &mut [u8]) {
+    use std::convert::TryFrom;
+    b[0] = (n >> 56) as u8;
+    b[1] = (n >> 48) as u8;
+    b[2] = (n >> 40) as u8;
+    b[3] = (n >> 32) as u8;
+    b[4] = (n >> 24) as u8;
+    b[5] = (n >> 16) as u8;
+    b[6] = (n >> 8) as u8;
+    b[7] = (n) as u8;
+}
 
 fn mbedtls_internal_sha512_process(ctx: &mut MdContextSHA512, data: &[u8]) -> i64 {
     println!(" Inside process\n");
-    let mut W: Vec<u64> = vec![0; 64];
+    let mut W: Vec<u64> = vec![0; 80];
     let mut A: Vec<u64> = vec![0; 8];
     let (mut temp1, mut temp2): (u64, u64) = (0, 0);
     let mut i: u64;
@@ -309,17 +287,20 @@ fn mbedtls_internal_sha512_process(ctx: &mut MdContextSHA512, data: &[u8]) -> i6
         if i < 16 {
             // yet to check how to call GET_UINT64_BE with 8 parameter
             W[i] = GET_UINT64_BE(&[
-                data[i << 3],
-                data[i << 3 + 1],
-                data[i << 3 + 2],
-                data[i << 3 + 3],
-                data[i << 3 + 4],
-                data[i << 3 + 5],
-                data[i << 3 + 6],
-                data[i << 3 + 7],
+                data[(i << 3)],
+                data[(i << 3) + 1],
+                data[(i << 3) + 2],
+                data[(i << 3) + 3],
+                data[(i << 3) + 4],
+                data[(i << 3) + 5],
+                data[(i << 3) + 6],
+                data[(i << 3) + 7],
             ]);
         } else {
-            W[i] = S1(W[i - 2]) + W[i - 7] + S0(W[i - 15]) + W[i - 16];
+            W[i] = S1(W[i - 2]);
+            W[i] = W[i].wrapping_add(W[i - 7]);
+            W[i] = W[i].wrapping_add(S0(W[i - 15]));
+            W[i] = W[i].wrapping_add(W[i - 16]);
         }
     }
     i = 0;
@@ -740,7 +721,9 @@ pub mod test {
                 k
             );
             println!("SHA-512 Sum before: {:?}", sha512sum);
-            println!("Test Sum before: {:?}", sha512_test_sum[i as usize]);
+            let mut temp_vec = vec![0; 64];
+            temp_vec.copy_from_slice(&sha512_test_sum[i as usize]);
+            println!("Test Sum before: {:?}", temp_vec);
 
             assert_eq!(0, mbedtls_sha512_starts_ret(&mut ctx, k));
 
@@ -778,7 +761,8 @@ pub mod test {
                     .unwrap_or(a.len().cmp(&b.len()))
             }
             println!("SHA512 Sum after Hashing : {:?}", sha512sum);
-            println!("Test Sum after Hashing: {:?}", sha512_test_sum[i as usize]);
+            temp_vec.copy_from_slice(&sha512_test_sum[i as usize]);
+            println!("Test Sum after Hashing: {:?}", temp_vec);
 
             assert_eq!(
                 cmp::Ordering::Equal,
